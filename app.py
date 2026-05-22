@@ -12,6 +12,21 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+# tkinter folder picker (works on Windows, Mac, Linux with a display)
+def pick_folder() -> str:
+    """Open the OS native folder-browser dialog and return the selected path."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()          # hide the empty Tk window
+        root.wm_attributes("-topmost", True)   # bring dialog to front
+        selected = filedialog.askdirectory(title="Select Video Folder")
+        root.destroy()
+        return selected or ""
+    except Exception:
+        return ""
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Video QC Tool",
@@ -269,11 +284,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Folder input ──────────────────────────────────────────────────────────────
-folder_path = st.text_input(
-    "📁  Local Folder Path",
-    placeholder="Windows: C:\\Users\\You\\Videos\\Project    |    Mac/Linux: /home/you/videos/project",
-    help="Paste the full path to the folder containing your video files."
+if "folder_path" not in st.session_state:
+    st.session_state.folder_path = ""
+
+st.markdown(
+    "<div style='color:#7a7a9a;font-size:13px;font-weight:500;"
+    "letter-spacing:.4px;margin-bottom:6px'>📁  LOCAL FOLDER PATH</div>",
+    unsafe_allow_html=True
 )
+col_input, col_browse = st.columns([5, 1])
+with col_input:
+    typed = st.text_input(
+        "folder_path_input",
+        value=st.session_state.folder_path,
+        placeholder="Windows: C:\\Users\\You\\Videos    |    Mac/Linux: /home/you/videos",
+        label_visibility="collapsed",
+        key="folder_text_input"
+    )
+    if typed != st.session_state.folder_path:
+        st.session_state.folder_path = typed
+
+with col_browse:
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    if st.button("🗂  Browse", use_container_width=True,
+                 help="Open folder picker dialog"):
+        picked = pick_folder()
+        if picked:
+            st.session_state.folder_path = picked
+            st.rerun()
+
+folder_path = st.session_state.folder_path
 
 video_files = []
 if folder_path.strip():
