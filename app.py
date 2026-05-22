@@ -12,20 +12,68 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-# tkinter folder picker (works on Windows, Mac, Linux with a display)
 def pick_folder() -> str:
-    """Open the OS native folder-browser dialog and return the selected path."""
+    """
+    Open the OS native folder-browser dialog and return the selected path.
+    Works on Windows, macOS, and Linux (requires a display / desktop session).
+    Returns "" if the dialog cannot be opened (headless server, no display, etc.).
+    """
+    import sys, subprocess, os
+
+    # ── Windows: use PowerShell's FolderBrowserDialog ─────────────────────────
+    if sys.platform == "win32":
+        try:
+            ps_script = (
+                "Add-Type -AssemblyName System.Windows.Forms;"
+                "$d=New-Object System.Windows.Forms.FolderBrowserDialog;"
+                "$d.Description='Select Video Folder';"
+                "$d.RootFolder='MyComputer';"
+                "$d.ShowNewFolderButton=$false;"
+                "if($d.ShowDialog() -eq 'OK'){Write-Output $d.SelectedPath}"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                capture_output=True, text=True, timeout=60
+            )
+            return result.stdout.strip()
+        except Exception:
+            pass
+
+    # ── macOS: use AppleScript / osascript ────────────────────────────────────
+    if sys.platform == "darwin":
+        try:
+            script = 'POSIX path of (choose folder with prompt "Select Video Folder")'
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, text=True, timeout=60
+            )
+            path = result.stdout.strip().rstrip("/")
+            return path if result.returncode == 0 else ""
+        except Exception:
+            pass
+
+    # ── Linux / fallback: try tkinter (requires DISPLAY) ─────────────────────
     try:
         import tkinter as tk
         from tkinter import filedialog
         root = tk.Tk()
-        root.withdraw()          # hide the empty Tk window
-        root.wm_attributes("-topmost", True)   # bring dialog to front
+        root.withdraw()
+        root.wm_attributes("-topmost", True)
         selected = filedialog.askdirectory(title="Select Video Folder")
         root.destroy()
         return selected or ""
     except Exception:
-        return ""
+        pass
+
+    # ── Last resort: zenity (common on GNOME/Linux) ───────────────────────────
+    try:
+        result = subprocess.run(
+            ["zenity", "--file-selection", "--directory", "--title=Select Video Folder"],
+            capture_output=True, text=True, timeout=60
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except Exception:
+        return ""   # dialog unavailable — user must type the path manually
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -307,11 +355,25 @@ with col_input:
 with col_browse:
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
     if st.button("🗂  Browse", use_container_width=True,
-                 help="Open folder picker dialog"):
+                 help="Open OS folder picker (Windows / macOS / Linux desktop)"):
         picked = pick_folder()
         if picked:
             st.session_state.folder_path = picked
+            st.session_state.pop("browse_unavailable", None)
             st.rerun()
+        else:
+            st.session_state["browse_unavailable"] = True
+
+if st.session_state.get("browse_unavailable"):
+    st.markdown(
+        "<div style='color:#ffd166;font-size:12px;margin:4px 0 6px;padding:8px 12px;"
+        "background:#1f1a0a;border:1px solid #4a3800;border-radius:8px'>"
+        "⚠️ <b>Folder dialog could not open.</b> Please type (or paste) the path directly "
+        "into the box above.<br>"
+        "<span style=\'color:#7a7a9a\'>Windows: <code>C:\\Users\\You\\Videos</code> &nbsp;|&nbsp; "
+        "Mac/Linux: <code>/home/you/videos</code></span></div>",
+        unsafe_allow_html=True
+    )
 
 folder_path = st.session_state.folder_path
 
